@@ -13,7 +13,6 @@ const int hourglassTopRowRight = 0;
 const int hourglassTopRowLeft = 63;
 const int hourglassMidRow = 12;
 const int hourglassBottomRow = 23;
-int iteration = 0;
 
 //Variablen für fallende Sandkörner
 const int sandColumn = 0;
@@ -23,9 +22,46 @@ int sandBottom = hourglassBottomRow;
 int nextSand = 0;
 
 //Timer Variablen
-unsigned int hourglassTimer = 15;
-unsigned long lastTime = 0;
-const int updateSpeedMillis = 80;
+    //calculateMaxSand();
+const int hourglassTimerDefaultValue = 15;
+const int sandUpdateSpeedMillis = 80;
+const int secondMillis = 1000;
+int secondsCounter = 0;
+int hourglassTimer = hourglassTimerDefaultValue;
+int hourglassTimerSeconds = hourglassTimer * 60;
+long sandTimer = 0;
+long secondsTimer = 0;
+
+//Variablen für Zahlen
+byte numbersLeft[11][8] = 
+  {
+    0x00,0x0e,0x0a,0x0a,0x0a,0x0e,0x00,0x00, //0 left
+    0x00,0x02,0x02,0x02,0x06,0x02,0x00,0x00, //1 left
+    0x00,0x0e,0x08,0x0e,0x02,0x0e,0x00,0x00, //2 left
+    0x00,0x0e,0x02,0x06,0x02,0x0e,0x00,0x00, //3 left
+    0x00,0x02,0x02,0x0e,0x0a,0x0a,0x00,0x00, //4 left
+    0x00,0x0e,0x02,0x0e,0x08,0x0e,0x00,0x00, //5 left
+    0x00,0x0e,0x0a,0x0e,0x08,0x0e,0x00,0x00, //6 left
+    0x00,0x02,0x02,0x02,0x02,0x0e,0x00,0x00, //7 left
+    0x00,0x0e,0x0a,0x0e,0x0a,0x0e,0x00,0x00, //8 left
+    0x00,0x0e,0x02,0x0e,0x0a,0x0e,0x00,0x00, //9 left
+    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00  //empty
+  };
+
+  byte numbersRight[11][8] = 
+  {
+    0x00,0x00,0x0e,0x0a,0x0a,0x0a,0x0e,0x00, //0 right
+    0x00,0x00,0x04,0x06,0x04,0x04,0x04,0x00, //1 right
+    0x00,0x00,0x0e,0x08,0x0e,0x02,0x0e,0x00, //2 right
+    0x00,0x00,0x0e,0x08,0x0c,0x08,0x0e,0x00, //3 right
+    0x00,0x00,0x0a,0x0a,0x0e,0x08,0x08,0x00, //4 right
+    0x00,0x00,0x0e,0x02,0x0e,0x08,0x0e,0x00, //5 right
+    0x00,0x00,0x0e,0x02,0x0e,0x0a,0x0e,0x00, //6 right
+    0x00,0x00,0x0e,0x08,0x08,0x08,0x08,0x00, //7 right
+    0x00,0x00,0x0e,0x0a,0x0e,0x0a,0x0e,0x00, //8 right
+    0x00,0x00,0x0e,0x0a,0x0e,0x08,0x0e,0x00, //9 right
+    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00  //empty
+  };
 
 struct Sand
 {
@@ -51,15 +87,8 @@ void setup()
 
   sand[nextSand].active = true;
   activateSandLed(sand[nextSand]);
-
-  // LED auf Panel 2 einschalten (2. Panel von rechts in der oberen Reihe)
-  //mx.setPoint(1, 0, true); // Panel 2 beginnt bei Spalte 8, Spalte 1, Zeile 0
-
-  // LED auf Panel 7 einschalten (3. Panel von rechts in der unteren Reihe)
-  //mx.setPoint(0, 6, true); // Panel 7 beginnt bei Spalte 48, Spalte 1, Zeile 0
-
-  //mx.clear();
   setInitialHourglass();
+  setInitialNumbers();
 }
 
 void setInitialHourglass()
@@ -138,24 +167,67 @@ void calculateMaxSand()
   maxSand = (sandBottom - hourglassMidRow + 1) / 3;
 }
 
+void setInitialNumbers()
+{
+  setTimeOnDisplay();
+}
+
+void updateMinutes()
+{
+  if(hourglassTimer > 0)
+  {
+    hourglassTimer--;
+  }
+}
+
+void setTimeOnDisplay()
+{
+  int leftNumber = 0;
+  int rightNumber = 0;
+  if(hourglassTimer < 10)
+  {
+    leftNumber = 10; //select the empty slot
+    rightNumber = hourglassTimer;
+  }
+  else
+  {
+    leftNumber = hourglassTimer / 10;
+    rightNumber = hourglassTimer % 10;
+  }
+  
+  for(int col = 0; col < 8; col++)
+  {
+    mx.setColumn(4, col, numbersLeft[leftNumber][col]);
+    mx.setColumn(3, col, numbersRight[rightNumber][col]);
+  }
+}
+
 void loop() 
 {
-  if (millis() - lastTime >= updateSpeedMillis) 
-  {
-    lastTime = millis();
-    iteration++;
+  unsigned long currentTimestamp = millis();
 
-    // if(iteration % 20 == 0 && sandBottom > 15)
-    // {
-    //   iteration = 0;
-    //   Serial.print("sandBottom = ");
-    //   Serial.println(sandBottom);
-    //   mx.setPoint(0, sandBottom, true);
-    //   sandBottom--;
-    // }
+  if (currentTimestamp - sandTimer >= sandUpdateSpeedMillis) 
+  {
+    sandTimer = currentTimestamp;
     
     updateFallingSand();
-    
-    //calculateMaxSand();
+  }
+  
+  if(currentTimestamp - secondsTimer >= secondMillis)
+  {
+    secondsTimer = currentTimestamp;
+
+    if(hourglassTimerSeconds > 0)
+    {
+      hourglassTimerSeconds--;
+      secondsCounter++;
+
+      if(secondsCounter >= 60)
+      {
+        secondsCounter = 0;
+        updateMinutes();
+        setTimeOnDisplay();
+      }
+    }
   }
 }
