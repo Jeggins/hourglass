@@ -1,7 +1,7 @@
 #include <MD_MAX72xx.h>
 #include <SPI.h>
 
-#define MAX_DEVICES 8  // 8 Panels insgesamt (2 Reihen à 4 Panels)
+#define MAX_DEVICES 8  // 8 Panels
 #define CLK_PIN 13     // Clock Pin
 #define DATA_PIN 11    // Data Pin
 #define CS_PIN 10      // Chip Select Pin
@@ -29,18 +29,18 @@ struct Sand
 };
 
 //Timer variables
-const int hourglassTimerDefaultValue = 3;
-const int sandUpdateSpeedMillis = 80;
-const int secondMillis = 1000;
-const int milliseconds = 1;
-int secondsCounter = 0;
-int hourglassTimer = hourglassTimerDefaultValue;
-int hourglassTimerSeconds = hourglassTimer * 60;
-int sandTransitionMillis = hourglassTimerSeconds * 970L / hourglassSandGrains; // calculates the duration of the hourglass in milliseconds but only 97% of the time, to be sure that sand is drained completely
-int sandTransitionCounter = 0;
-long sandTimer = 0;
-long secondsTimer = 0;
-long millisTimer = 0;
+const int hourglassTimerDefaultValue = 3; // Default value of the Hourglass Time. This time will be used when the Hourglass gets started out of standby.
+const int sandUpdateSpeedMillis = 80; // Refreshtime in ms that will be used to visualize the falling sand.
+const int secondMillis = 1000; //One second im ms.
+const int milliseconds = 1; // Variable for one millisecond.
+int hourglassTimer = hourglassTimerDefaultValue; // This is the actual Varable that will be used to set the hourglass timer. Can be changed via button.
+int hourglassTimerSeconds = hourglassTimer * 60; // The time of the hourglass in seconds.
+int sandTransitionMillis = hourglassTimerSeconds * 970L / hourglassSandGrains; // calculates the duration of the hourglass in milliseconds but only takes 97% of the time, to be sure that sand is drained completely.
+int secondsCounter = 0;  //Variable to count up the passed seconds.
+int sandTransitionCounter = 0; //Variable to count up the sand that already fell down.
+long sandTransitionTimer = 0; //Variable to count up the passed time of the sand transition.
+long secondsTimer = 0; //Timervariable for seconds.
+long millisTimer = 0; //Timervariable for ms.
 
 //Variables for numbers
 byte numbersLeft[11][8] = 
@@ -78,7 +78,9 @@ int topRow = 1;
 int topColumn = 0;
 int botRow = hourglassBottomRow;
 int botColumn = 0;
-int[][]
+int sandGrainSlide[3][2] = {{0, 0}, {0, 0}, {0, 0}};
+int sandGrainsToSlide = 0;
+int sandGrainsAlreadySlid = 0;
 int maxColumnPerRow[10] = {4, 5, 6, 6, 6, 5, 3, 2, 1, 0}; // bottom part max column per row
 
 
@@ -102,7 +104,6 @@ void setup()
   activateSandLed(sand[nextSand]);
   setInitialHourglass();
   setInitialNumbers();
-  Serial.println(sandTransitionMillis);
 }
 
 void setInitialHourglass()
@@ -158,7 +159,112 @@ void updateBottomTransition()
 {
   bool sandGrainPlaced = false;
 
+  if(checkSandPile())
+  {
+    sandGrainPlaced = true;
+  }
 
+  while(!sandGrainPlaced)
+  {
+    if(botColumn <= maxColumnPerRow[hourglassBottomRow - botRow])
+    {
+      if(!mx.getPoint(botColumn, botRow))
+      {
+        sandGrainSlide[0][0] = botColumn;
+        sandGrainSlide[0][1] = botRow;
+        botColumn = 0;
+        sandGrainSlide[1][0] = botColumn + 1;
+        sandGrainSlide[1][1] = botRow - 1;
+        sandGrainSlide[2][0] = botColumn;
+        sandGrainSlide[2][1] = botRow - 2;
+        
+        sandGrainsToSlide = 2;
+        sandGrainsAlreadySlid = 2;
+        sandGrainPlaced = true;
+      }
+    }
+  }
+}
+
+bool checkSandPile()
+{
+  if(!mx.getPoint(botColumn, botRow))
+  {
+    sandGrainSlide[0][0] = botColumn;
+    sandGrainSlide[0][1] = botRow;
+    sandGrainsToSlide = 0;
+    sandGrainsAlreadySlid = 0;
+    return true;
+  }
+  if(!mx.getPoint(botColumn + 1, botRow))
+  {
+    sandGrainSlide[0][0] = botColumn + 1;
+    sandGrainSlide[0][1] = botRow;
+    sandGrainSlide[1][0] = botColumn;
+    sandGrainSlide[1][1] = botRow - 1;
+    sandGrainsToSlide = 1;
+    sandGrainsAlreadySlid = 1;
+    return true;
+  }
+  if(!mx.getPoint(botColumn, botRow - 1))
+  {
+    sandGrainSlide[0][0] = botColumn;
+    sandGrainSlide[0][1] = botRow - 1;
+    sandGrainsToSlide = 0;
+    sandGrainsAlreadySlid = 0;
+    return true;
+  }
+  if(!mx.getPoint(botColumn + 2, botRow))
+  {
+    sandGrainSlide[0][0] = botColumn + 2;
+    sandGrainSlide[0][1] = botRow;
+    sandGrainSlide[1][0] = botColumn + 1;
+    sandGrainSlide[1][1] = botRow - 1;
+    sandGrainSlide[2][0] = botColumn;
+    sandGrainSlide[2][1] = botRow - 2;
+    sandGrainsToSlide = 2;
+    sandGrainsAlreadySlid = 2;
+    return true;
+  }
+  if(!mx.getPoint(botColumn + 1, botRow - 1))
+  {
+    sandGrainSlide[0][0] = botColumn + 1;
+    sandGrainSlide[0][1] = botRow - 1;
+    sandGrainSlide[1][0] = botColumn;
+    sandGrainSlide[1][1] = botRow - 2;
+    sandGrainsToSlide = 1;
+    sandGrainsAlreadySlid = 1;
+    return true;
+  }
+  if(!mx.getPoint(botColumn, botRow - 2))
+  {
+    sandGrainSlide[0][0] = botColumn;
+    sandGrainSlide[0][1] = botRow - 2;
+    sandGrainsToSlide = 0;
+    sandGrainsAlreadySlid = 0;
+    return true;
+  }
+}
+
+void updateSandGrainSlides()
+{
+  if(sandGrainsAlreadySlid >= 0)
+  {
+    if(sandGrainsAlreadySlid == sandGrainsToSlide)
+    {
+      mx.setPoint(sandGrainSlide[sandGrainsAlreadySlid][0], hourglassTopRowRight + sandGrainSlide[sandGrainsAlreadySlid][1], true);
+      mx.setPoint(sandGrainSlide[sandGrainsAlreadySlid][0], hourglassTopRowLeft - sandGrainSlide[sandGrainsAlreadySlid][1], true);
+      sandGrainsAlreadySlid--;
+    }
+    else if(sandGrainsAlreadySlid < sandGrainsToSlide)
+    {
+      mx.setPoint(sandGrainSlide[sandGrainsAlreadySlid + 1][0], hourglassTopRowRight + sandGrainSlide[sandGrainsAlreadySlid + 1][1], false);
+      mx.setPoint(sandGrainSlide[sandGrainsAlreadySlid + 1][0], hourglassTopRowLeft - sandGrainSlide[sandGrainsAlreadySlid + 1][1], false);
+      mx.setPoint(sandGrainSlide[sandGrainsAlreadySlid][0], hourglassTopRowRight + sandGrainSlide[sandGrainsAlreadySlid][1], true);
+      mx.setPoint(sandGrainSlide[sandGrainsAlreadySlid][0], hourglassTopRowLeft - sandGrainSlide[sandGrainsAlreadySlid][1], true);
+      sandGrainsAlreadySlid--;
+    }
+  }
 }
 
 void updateFallingSand()
@@ -260,11 +366,12 @@ void loop()
     }
   }
 
-  if(currentTimestamp - sandTimer >= sandUpdateSpeedMillis) //is executed as often as sandUpdateSpeedMillis is set. 
+  if(currentTimestamp - sandTransitionTimer >= sandUpdateSpeedMillis) //is executed as often as sandUpdateSpeedMillis is set. 
   {
-    sandTimer = currentTimestamp;
+    sandTransitionTimer = currentTimestamp;
     
     updateFallingSand();
+    updateSandGrainSlides();
   }
   
   if(currentTimestamp - secondsTimer >= secondMillis) //is executed every second
