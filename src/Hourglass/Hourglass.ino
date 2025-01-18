@@ -4,35 +4,45 @@
 #define MAX_DEVICES 8  // 8 Panels insgesamt (2 Reihen à 4 Panels)
 #define CLK_PIN 13     // Clock Pin
 #define DATA_PIN 11    // Data Pin
-#define CS_PIN 9       // Chip Select Pin
+#define CS_PIN 10      // Chip Select Pin
 
 MD_MAX72XX mx = MD_MAX72XX(MD_MAX72XX::FC16_HW, CS_PIN, MAX_DEVICES);
 
-//Variablen Sanduhr allgemein
+//Variables hourglass general
 const int hourglassTopRowRight = 0;
 const int hourglassTopRowLeft = 63;
 const int hourglassMidRow = 12;
 const int hourglassBottomRow = 23;
+const int hourglassSandGrains = 49;
 
-//Variablen für fallende Sandkörner
+//Variables for falling sand
 const int sandColumn = 0;
 const int maxSandConst = 4;
 int maxSand = maxSandConst;
 int sandBottom = hourglassBottomRow;
 int nextSand = 0;
 
-//Timer Variablen
-    //calculateMaxSand();
-const int hourglassTimerDefaultValue = 15;
+struct Sand
+{
+  int row;
+  bool active = false;
+};
+
+//Timer variables
+const int hourglassTimerDefaultValue = 3;
 const int sandUpdateSpeedMillis = 80;
 const int secondMillis = 1000;
+const int milliseconds = 1;
 int secondsCounter = 0;
 int hourglassTimer = hourglassTimerDefaultValue;
 int hourglassTimerSeconds = hourglassTimer * 60;
+int sandTransitionMillis = hourglassTimerSeconds * 970L / hourglassSandGrains; // calculates the duration of the hourglass in milliseconds but only 97% of the time, to be sure that sand is drained completely
+int sandTransitionCounter = 0;
 long sandTimer = 0;
 long secondsTimer = 0;
+long millisTimer = 0;
 
-//Variablen für Zahlen
+//Variables for numbers
 byte numbersLeft[11][8] = 
   {
     0x00,0x0e,0x0a,0x0a,0x0a,0x0e,0x00,0x00, //0 left
@@ -63,11 +73,14 @@ byte numbersLeft[11][8] =
     0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00  //empty
   };
 
-struct Sand
-{
-  int row;
-  bool active = false;
-};
+//Variables for sand transition
+int topRow = 1;
+int topColumn = 0;
+int botRow = hourglassBottomRow;
+int botColumn = 0;
+int[][]
+int maxColumnPerRow[10] = {4, 5, 6, 6, 6, 5, 3, 2, 1, 0}; // bottom part max column per row
+
 
 Sand sand[maxSandConst];
 
@@ -89,6 +102,7 @@ void setup()
   activateSandLed(sand[nextSand]);
   setInitialHourglass();
   setInitialNumbers();
+  Serial.println(sandTransitionMillis);
 }
 
 void setInitialHourglass()
@@ -110,6 +124,41 @@ void setInitialHourglass()
       mx.setColumn(panelValue[panel], col, startValue[panel][col]);
     }
   }
+}
+
+void updateSandTransition()
+{
+  if(sandTransitionCounter >= sandTransitionMillis)
+  {
+    updateTopTratsition();
+    updateBottomTransition();
+    sandTransitionCounter = 0;
+  }
+
+  sandTransitionCounter++;
+}
+
+void updateTopTratsition()
+{
+  mx.setPoint(topColumn, hourglassTopRowRight + topRow, false);
+  mx.setPoint(topColumn, hourglassTopRowLeft - topRow, false);
+
+  if(mx.getPoint(topColumn + 1, topRow))
+  {
+    topColumn++;
+  }
+  else
+  {
+    topColumn = 0;
+    topRow++;
+  }
+}
+
+void updateBottomTransition()
+{
+  bool sandGrainPlaced = false;
+
+
 }
 
 void updateFallingSand()
@@ -162,11 +211,6 @@ void deactivateSandLed(Sand sand)
   mx.setPoint(sandColumn, hourglassTopRowLeft - sand.row, false);
 }
 
-void calculateMaxSand()
-{
-  maxSand = (sandBottom - hourglassMidRow + 1) / 3;
-}
-
 void setInitialNumbers()
 {
   setTimeOnDisplay();
@@ -206,14 +250,24 @@ void loop()
 {
   unsigned long currentTimestamp = millis();
 
-  if (currentTimestamp - sandTimer >= sandUpdateSpeedMillis) 
+  if(currentTimestamp - millisTimer >= milliseconds)
+  {
+    millisTimer = currentTimestamp;
+
+    if(hourglassTimerSeconds > 0)
+    {
+      updateSandTransition();
+    }
+  }
+
+  if(currentTimestamp - sandTimer >= sandUpdateSpeedMillis) //is executed as often as sandUpdateSpeedMillis is set. 
   {
     sandTimer = currentTimestamp;
     
     updateFallingSand();
   }
   
-  if(currentTimestamp - secondsTimer >= secondMillis)
+  if(currentTimestamp - secondsTimer >= secondMillis) //is executed every second
   {
     secondsTimer = currentTimestamp;
 
