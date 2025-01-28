@@ -5,6 +5,8 @@
 #define CLK_PIN 13     // Clock Pin
 #define DATA_PIN 11    // Data Pin
 #define CS_PIN 10      // Chip Select Pin
+#define BTN1_PIN 2     // Button1 Pin
+#define BTN2_PIN 3     // Button2 Pin
 
 MD_MAX72XX mx = MD_MAX72XX(MD_MAX72XX::FC16_HW, CS_PIN, MAX_DEVICES);
 
@@ -13,7 +15,7 @@ const int hourglassTopRowRight = 0;
 const int hourglassTopRowLeft = 63;
 const int hourglassMidRow = 12;
 const int hourglassBottomRow = 23;
-const int hourglassSandGrains = 49;
+const int hourglassSandGrains = 43;
 
 //Variables for falling sand
 const int sandColumn = 0;
@@ -35,7 +37,7 @@ const int secondMillis = 1000; //One second im ms.
 const int milliseconds = 1; // Variable for one millisecond.
 int hourglassTimer = hourglassTimerDefaultValue; // This is the actual Varable that will be used to set the hourglass timer. Can be changed via button.
 int hourglassTimerSeconds = hourglassTimer * 60; // The time of the hourglass in seconds.
-int sandTransitionMillis = hourglassTimerSeconds * 970L / hourglassSandGrains; // calculates the duration of the hourglass in milliseconds but only takes 97% of the time, to be sure that sand is drained completely.
+int sandTransitionMillis = hourglassTimerSeconds * 960L / hourglassSandGrains; // calculates the time in ms that one sandgrain need to move from the top part to the bottom part.
 int secondsCounter = 0;  //Variable to count up the passed seconds.
 int sandTransitionCounter = 0; //Variable to count up the sand that already fell down.
 long sandTransitionTimer = 0; //Variable to count up the passed time of the sand transition.
@@ -74,17 +76,26 @@ byte numbersLeft[11][8] =
   };
 
 //Variables for sand transition
-int topRow = 1;
+int topRow = 2;
 int topColumn = 0;
 int botRow = hourglassBottomRow;
 int botColumn = 0;
 int sandGrainSlide[3][2] = {{0, 0}, {0, 0}, {0, 0}};
-int sandGrainsToSlide = 0;
-int sandGrainsAlreadySlid = 0;
-int maxColumnPerRow[10] = {4, 5, 6, 6, 6, 5, 3, 2, 1, 0}; // bottom part max column per row
-
+int sandGrainsToSlide = -1;
+int sandGrainsAlreadySlid = -1;
+int maxColumnPerRow[10] = {4, 5, 6, 6, 6, 4, 3, 2, 1, 0}; // bottom part max column per row
 
 Sand sand[maxSandConst];
+
+//Variables for buttons
+volatile bool button1Pressed = false;
+volatile bool button2Pressed = false;
+volatile bool button1Released = false;
+volatile bool button2Released = false;
+volatile bool lastButton1State = HIGH;
+volatile bool lastButton2State = HIGH;
+unsigned long lastDebounceTime = 0;
+const unsigned int debounceDelay = 50;
 
 void setup() 
 {
@@ -92,6 +103,10 @@ void setup()
   mx.begin();
   mx.control(MD_MAX72XX::INTENSITY, 1); // Helligkeit einstellen
   mx.clear();
+  pinMode(BTN1_PIN, INPUT_PULLUP);
+  pinMode(BTN2_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(BTN1_PIN), onButton1Change, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(BTN2_PIN), onButton2Change, CHANGE);
 
   // Sandkörner StartReihe und Status initialisieren
   for(int i = 0; i < maxSand; i++)
@@ -106,14 +121,58 @@ void setup()
   setInitialNumbers();
 }
 
+// Interrupt-Service-Routine (ISR)
+void onButton1Change() {
+  unsigned long debounceTime = millis();
+  
+  if (debounceTime - lastDebounceTime > debounceDelay)
+  {
+    lastDebounceTime = debounceTime;
+
+    bool currentButton1State = digitalRead(BTN1_PIN);
+
+    if(currentButton1State == LOW && lastButton1State == HIGH)
+    {
+      button1Pressed = true;
+    }
+    if (currentButton1State == HIGH && lastButton1State == LOW) {
+      button1Released = true;
+    }
+    
+    lastButton1State = currentButton1State;
+  }
+}
+
+void onButton2Change() {
+  unsigned long debounceTime = millis();
+  
+  if (debounceTime - lastDebounceTime > debounceDelay)
+  {
+    lastDebounceTime = debounceTime;
+
+    bool currentButton2State = digitalRead(BTN2_PIN);
+
+    if(currentButton2State == LOW && lastButton2State == HIGH)
+    {
+      button2Pressed = true;
+    }
+    if (currentButton2State == HIGH && lastButton2State == LOW) {
+      button2Released = true;
+    }
+    
+    lastButton2State = currentButton2State;
+  }
+}
+
+//Hourglass Code
 void setInitialHourglass()
 {
   byte startValue[4][8] = 
   {
-    0x00,0x3f,0x7f,0x7f,0x7f,0x3f,0x1f,0x0f, //Panel 1
+    0x00,0x00,0x7f,0x7f,0x7f,0x3f,0x1f,0x0f, //Panel 1
     0x07,0x03,0x01,0x01,0x00,0x00,0x00,0x00, //Panel 2
     0x00,0x00,0x00,0x00,0x01,0x01,0x03,0x07, //Panel 7
-    0x0f,0x1f,0x3f,0x7f,0x7f,0x7f,0x3f,0x00  //Panel 8
+    0x0f,0x1f,0x3f,0x7f,0x7f,0x7f,0x00,0x00  //Panel 8
   };
   
   byte panelValue[4] = {0, 1, 6, 7};
@@ -173,14 +232,30 @@ void updateBottomTransition()
         sandGrainSlide[0][0] = botColumn;
         sandGrainSlide[0][1] = botRow;
         botColumn = 0;
-        sandGrainSlide[1][0] = botColumn + 1;
+        sandGrainSlide[1][0] = 2;
         sandGrainSlide[1][1] = botRow - 1;
-        sandGrainSlide[2][0] = botColumn;
+        sandGrainSlide[2][0] = 1;
         sandGrainSlide[2][1] = botRow - 2;
         
         sandGrainsToSlide = 2;
         sandGrainsAlreadySlid = 2;
         sandGrainPlaced = true;
+      }
+      else
+      {
+        if(botColumn >= maxColumnPerRow[hourglassBottomRow - botRow])
+        {
+          botColumn = 0;
+          botRow--;
+          if(checkSandPile())
+          {
+            sandGrainPlaced = true;
+          }
+        }
+        else
+        {
+          botColumn++;
+        }
       }
     }
   }
@@ -194,6 +269,7 @@ bool checkSandPile()
     sandGrainSlide[0][1] = botRow;
     sandGrainsToSlide = 0;
     sandGrainsAlreadySlid = 0;
+    sandBottom--;
     return true;
   }
   if(!mx.getPoint(botColumn + 1, botRow))
@@ -212,6 +288,7 @@ bool checkSandPile()
     sandGrainSlide[0][1] = botRow - 1;
     sandGrainsToSlide = 0;
     sandGrainsAlreadySlid = 0;
+    sandBottom--;
     return true;
   }
   if(!mx.getPoint(botColumn + 2, botRow))
@@ -242,8 +319,11 @@ bool checkSandPile()
     sandGrainSlide[0][1] = botRow - 2;
     sandGrainsToSlide = 0;
     sandGrainsAlreadySlid = 0;
+    sandBottom--;
     return true;
   }
+
+  return false;
 }
 
 void updateSandGrainSlides()
@@ -390,5 +470,25 @@ void loop()
         setTimeOnDisplay();
       }
     }
+  }
+
+  if (button1Pressed) {
+    Serial.println("Button 1 gedrückt!");
+    button1Pressed = false;
+  }
+
+  if (button1Released) {
+    Serial.println("Button 1 losgelassen!");
+    button1Released = false;
+  }
+
+  if (button2Pressed) {
+    Serial.println("Button 2 gedrückt!");
+    button2Pressed = false;
+  }
+
+  if (button2Released) {
+    Serial.println("Button 2 losgelassen!");
+    button2Released = false;
   }
 }
