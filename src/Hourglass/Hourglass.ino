@@ -31,10 +31,12 @@ struct Sand
 };
 
 //Timer variables
-const int hourglassTimerDefaultValue = 3; // Default value of the Hourglass Time. This time will be used when the Hourglass gets started out of standby.
+const int hourglassTimerDefaultValue = 1; // Default value of the Hourglass Time. This time will be used when the Hourglass gets started out of standby.
 const int sandUpdateSpeedMillis = 80; // Refreshtime in ms that will be used to visualize the falling sand.
 const int secondMillis = 1000; //One second im ms.
 const int milliseconds = 1; // Variable for one millisecond.
+const int defaultStandbyTimer = 1;// Minutes until device turns to standby mode after the hourglass time has passed.
+int standbyTimer = defaultStandbyTimer;
 int hourglassTimer = hourglassTimerDefaultValue; // This is the actual Varable that will be used to set the hourglass timer. Can be changed via button.
 int hourglassTimerSeconds = hourglassTimer * 60; // The time of the hourglass in seconds.
 int sandTransitionMillis = hourglassTimerSeconds * 960L / hourglassSandGrains; // calculates the time in ms that one sandgrain need to move from the top part to the bottom part.
@@ -45,7 +47,7 @@ long secondsTimer = 0; //Timervariable for seconds.
 long millisTimer = 0; //Timervariable for ms.
 
 //Variables for numbers
-byte numbersLeft[11][8] = 
+const byte numbersLeft[11][8] = 
   {
     0x00,0x0e,0x0a,0x0a,0x0a,0x0e,0x00,0x00, //0 left
     0x00,0x02,0x02,0x02,0x06,0x02,0x00,0x00, //1 left
@@ -60,7 +62,7 @@ byte numbersLeft[11][8] =
     0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00  //empty
   };
 
-  byte numbersRight[11][8] = 
+const byte numbersRight[11][8] = 
   {
     0x00,0x00,0x0e,0x0a,0x0a,0x0a,0x0e,0x00, //0 right
     0x00,0x00,0x04,0x06,0x04,0x04,0x04,0x00, //1 right
@@ -83,7 +85,7 @@ int botColumn = 0;
 int sandGrainSlide[3][2] = {{0, 0}, {0, 0}, {0, 0}};
 int sandGrainsToSlide = -1;
 int sandGrainsAlreadySlid = -1;
-int maxColumnPerRow[10] = {4, 5, 6, 6, 6, 4, 3, 2, 1, 0}; // bottom part max column per row
+const int maxColumnPerRow[10] = {4, 5, 6, 6, 6, 4, 3, 2, 1, 0}; // bottom part max column per row
 
 Sand sand[maxSandConst];
 
@@ -162,6 +164,46 @@ void onButton2Change() {
     
     lastButton2State = currentButton2State;
   }
+}
+
+//InitializeHourglass
+void initializeHourglass()
+{
+  resetVariables();
+
+  for(int i = 0; i < maxSand; i++)
+  {
+    sand[i].row = hourglassMidRow;
+    sand[i].active = false;
+  }
+
+  sand[nextSand].active = true;
+  activateSandLed(sand[nextSand]);
+
+  setInitialHourglass();
+  setInitialNumbers();
+}
+
+void resetVariables()
+{
+  standbyTimer = defaultStandbyTimer;
+  hourglassTimer = hourglassTimerDefaultValue;
+  hourglassTimerSeconds = hourglassTimer * 60;
+  sandTransitionMillis = hourglassTimerSeconds * 960L / hourglassSandGrains; 
+  secondsCounter = 0;
+  sandTransitionCounter = 0;
+  sandTransitionTimer = 0;
+  secondsTimer = 0;
+  millisTimer = 0;
+  topRow = 2;
+  topColumn = 0;
+  botRow = hourglassBottomRow;
+  botColumn = 0;
+  sandGrainsToSlide = -1;
+  sandGrainsAlreadySlid = -1;
+  maxSand = maxSandConst;
+  sandBottom = hourglassBottomRow;
+  nextSand = 0;
 }
 
 //Hourglass Code
@@ -432,6 +474,16 @@ void setTimeOnDisplay()
   }
 }
 
+void turnOnDevice()
+{
+  mx.control(MD_MAX72XX::SHUTDOWN, false);
+}
+
+void turnOffDevice()
+{
+  mx.control(MD_MAX72XX::SHUTDOWN, true);
+}
+
 void loop() 
 {
   unsigned long currentTimestamp = millis();
@@ -457,11 +509,11 @@ void loop()
   if(currentTimestamp - secondsTimer >= secondMillis) //is executed every second
   {
     secondsTimer = currentTimestamp;
+    secondsCounter++;
 
     if(hourglassTimerSeconds > 0)
     {
       hourglassTimerSeconds--;
-      secondsCounter++;
 
       if(secondsCounter >= 60)
       {
@@ -470,10 +522,26 @@ void loop()
         setTimeOnDisplay();
       }
     }
+    else
+    {
+      if(secondsCounter >= 60)
+      {
+        standbyTimer--;
+      }
+    }
+
+    if(standbyTimer <= 0)
+    {
+      turnOffDevice();
+    }
   }
 
   if (button1Pressed) {
     Serial.println("Button 1 gedrückt!");
+    mx.clear();
+    turnOnDevice();
+    initializeHourglass();
+
     button1Pressed = false;
   }
 
@@ -484,6 +552,7 @@ void loop()
 
   if (button2Pressed) {
     Serial.println("Button 2 gedrückt!");
+    turnOffDevice();
     button2Pressed = false;
   }
 
