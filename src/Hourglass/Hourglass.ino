@@ -43,6 +43,7 @@ int sandTransitionMillis = hourglassTimerSeconds * 960L / hourglassSandGrains; /
 int secondsCounter = 0;  //Variable to count up the passed seconds.
 int sandTransitionCounter = 0; //Variable to count up the sand that already fell down.
 long sandTransitionTimer = 0; //Variable to count up the passed time of the sand transition.
+long blinkTimer = 0; //Variable to count up the time for the blink animation in time change.
 long secondsTimer = 0; //Timervariable for seconds.
 long millisTimer = 0; //Timervariable for ms.
 
@@ -89,6 +90,15 @@ const int maxColumnPerRow[10] = {4, 5, 6, 6, 6, 4, 3, 2, 1, 0}; // bottom part m
 
 Sand sand[maxSandConst];
 
+//Variabled for time change functionality
+bool isTimeChangeActive = false;
+bool numbersShown = true;
+int timeChangeDuration = 8; //Duration how long the time change should be active
+int blinkTimerMillis = 500;
+int hourglassChangedTime = 15;
+const int emptyValue = -1;
+
+
 //Variables for buttons
 volatile bool button1Pressed = false;
 volatile bool button2Pressed = false;
@@ -120,7 +130,7 @@ void setup()
   sand[nextSand].active = true;
   activateSandLed(sand[nextSand]);
   setInitialHourglass();
-  setInitialNumbers();
+  setInitialNumbers(hourglassTimer);
 }
 
 // Interrupt-Service-Routine (ISR)
@@ -167,9 +177,9 @@ void onButton2Change() {
 }
 
 //InitializeHourglass
-void initializeHourglass()
+void initializeHourglass(int hourglassStartTime)
 {
-  resetVariables();
+  resetVariables(hourglassStartTime);
 
   for(int i = 0; i < maxSand; i++)
   {
@@ -181,13 +191,13 @@ void initializeHourglass()
   activateSandLed(sand[nextSand]);
 
   setInitialHourglass();
-  setInitialNumbers();
+  setInitialNumbers(hourglassStartTime);
 }
 
-void resetVariables()
+void resetVariables(int hourglassStartTime)
 {
   standbyTimer = defaultStandbyTimer;
-  hourglassTimer = hourglassTimerDefaultValue;
+  hourglassTimer = hourglassStartTime;
   hourglassTimerSeconds = hourglassTimer * 60;
   sandTransitionMillis = hourglassTimerSeconds * 960L / hourglassSandGrains; 
   secondsCounter = 0;
@@ -439,9 +449,9 @@ void deactivateSandLed(Sand sand)
   mx.setPoint(sandColumn, hourglassTopRowLeft - sand.row, false);
 }
 
-void setInitialNumbers()
+void setInitialNumbers(int hourglassStartTime)
 {
-  setTimeOnDisplay();
+  setTimeOnDisplay(hourglassStartTime);
 }
 
 void updateMinutes()
@@ -452,19 +462,24 @@ void updateMinutes()
   }
 }
 
-void setTimeOnDisplay()
+void setTimeOnDisplay(int value)
 {
   int leftNumber = 0;
   int rightNumber = 0;
-  if(hourglassTimer < 10)
+  if(value < 10 && value >= 0)
   {
     leftNumber = 10; //select the empty slot
-    rightNumber = hourglassTimer;
+    rightNumber = value;
+  }
+  else if(value >= 10)
+  {
+    leftNumber = value / 10;
+    rightNumber = value % 10;
   }
   else
   {
-    leftNumber = hourglassTimer / 10;
-    rightNumber = hourglassTimer % 10;
+    leftNumber = 10; //select the empty slot
+    rightNumber = 10; //select the empty slot
   }
   
   for(int col = 0; col < 8; col++)
@@ -505,6 +520,25 @@ void loop()
     updateFallingSand();
     updateSandGrainSlides();
   }
+
+  if(isTimeChangeActive)
+  {
+    if(currentTimestamp - blinkTimer >= blinkTimerMillis) // is executed as often as blinkTimerMillis is set.
+    {
+      blinkTimer = currentTimestamp;
+
+      if(numbersShown)
+      {
+        setTimeOnDisplay(emptyValue);
+        numbersShown = false;
+      }
+      else
+      {
+        setTimeOnDisplay(hourglassChangedTime);
+        numbersShown = true;
+      }
+    }
+  }
   
   if(currentTimestamp - secondsTimer >= secondMillis) //is executed every second
   {
@@ -519,7 +553,7 @@ void loop()
       {
         secondsCounter = 0;
         updateMinutes();
-        setTimeOnDisplay();
+        setTimeOnDisplay(hourglassTimer);
       }
     }
     else
@@ -534,14 +568,36 @@ void loop()
     {
       turnOffDevice();
     }
+
+    if(isTimeChangeActive)
+    {
+      if(timeChangeDuration > 0)
+      {
+        timeChangeDuration--;
+      }
+      else
+      {
+        isTimeChangeActive = false;
+        setTimeOnDisplay(hourglassTimer);
+      }
+    }
   }
 
   if (button1Pressed) {
     Serial.println("Button 1 gedrückt!");
     mx.clear();
     turnOnDevice();
-    initializeHourglass();
 
+    if(isTimeChangeActive)
+    {
+      initializeHourglass(hourglassChangedTime);
+    }
+    else
+    {
+      initializeHourglass(hourglassTimerDefaultValue);
+    }
+
+    isTimeChangeActive = false;
     button1Pressed = false;
   }
 
@@ -552,7 +608,25 @@ void loop()
 
   if (button2Pressed) {
     Serial.println("Button 2 gedrückt!");
-    turnOffDevice();
+    
+    timeChangeDuration = 8;
+
+    if(!isTimeChangeActive)
+    {
+      isTimeChangeActive = true;
+    }
+    else
+    {
+      if(hourglassChangedTime < 20)
+      {
+        hourglassChangedTime++;
+      }
+      else
+      {
+        hourglassChangedTime = 5;
+      }
+    }
+
     button2Pressed = false;
   }
 
