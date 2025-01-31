@@ -39,7 +39,7 @@ const int defaultStandbyTimer = 1;// Minutes until device turns to standby mode 
 int standbyTimer = defaultStandbyTimer;
 int hourglassTimer = hourglassTimerDefaultValue; // This is the actual Varable that will be used to set the hourglass timer. Can be changed via button.
 int hourglassTimerSeconds = hourglassTimer * 60; // The time of the hourglass in seconds.
-int sandTransitionMillis = hourglassTimerSeconds * 960L / hourglassSandGrains; // calculates the time in ms that one sandgrain need to move from the top part to the bottom part.
+int sandTransitionMillis = hourglassTimerSeconds * 955L / hourglassSandGrains; // calculates the time in ms that one sandgrain need to move from the top part to the bottom part.
 int secondsCounter = 0;  //Variable to count up the passed seconds.
 int sandTransitionCounter = 0; //Variable to count up the sand that already fell down.
 long sandTransitionTimer = 0; //Variable to count up the passed time of the sand transition.
@@ -107,20 +107,19 @@ volatile bool button2Released = false;
 volatile bool lastButton1State = HIGH;
 volatile bool lastButton2State = HIGH;
 unsigned long lastDebounceTime = 0;
-const unsigned int debounceDelay = 50;
+const unsigned int debounceDelay = 150;
 
 void setup() 
 {
-  Serial.begin(9600);  // Serielle Schnittstelle initialisieren
+  Serial.begin(9600);  // Initialize serial interface
   mx.begin();
-  mx.control(MD_MAX72XX::INTENSITY, 1); // Helligkeit einstellen
+  mx.control(MD_MAX72XX::INTENSITY, 1); // Brightness
   mx.clear();
   pinMode(BTN1_PIN, INPUT_PULLUP);
   pinMode(BTN2_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(BTN1_PIN), onButton1Change, CHANGE);
   attachInterrupt(digitalPinToInterrupt(BTN2_PIN), onButton2Change, CHANGE);
 
-  // Sandkörner StartReihe und Status initialisieren
   for(int i = 0; i < maxSand; i++)
   {
     sand[i].row = hourglassMidRow;
@@ -199,7 +198,7 @@ void resetVariables(int hourglassStartTime)
   standbyTimer = defaultStandbyTimer;
   hourglassTimer = hourglassStartTime;
   hourglassTimerSeconds = hourglassTimer * 60;
-  sandTransitionMillis = hourglassTimerSeconds * 960L / hourglassSandGrains; 
+  sandTransitionMillis = hourglassTimerSeconds * 955L / hourglassSandGrains; 
   secondsCounter = 0;
   sandTransitionCounter = 0;
   sandTransitionTimer = 0;
@@ -560,6 +559,7 @@ void loop()
     {
       if(secondsCounter >= 60)
       {
+        secondsCounter = 0;
         standbyTimer--;
       }
     }
@@ -578,6 +578,7 @@ void loop()
       else
       {
         isTimeChangeActive = false;
+        hourglassChangedTime = 15;
         setTimeOnDisplay(hourglassTimer);
       }
     }
@@ -610,6 +611,8 @@ void loop()
     Serial.println("Button 2 gedrückt!");
     
     timeChangeDuration = 8;
+    standbyTimer = defaultStandbyTimer;
+    turnOnDevice();
 
     if(!isTimeChangeActive)
     {
