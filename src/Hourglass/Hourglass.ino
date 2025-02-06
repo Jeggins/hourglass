@@ -31,11 +31,11 @@ struct Sand
 };
 
 //Timer variables
-const int hourglassTimerDefaultValue = 1; // Default value of the Hourglass Time. This time will be used when the Hourglass gets started out of standby.
+const int hourglassTimerDefaultValue = 15; // Default value of the Hourglass Time. This time will be used when the Hourglass gets started out of standby.
 const int sandUpdateSpeedMillis = 80; // Refreshtime in ms that will be used to visualize the falling sand.
 const int secondMillis = 1000; //One second im ms.
 const int milliseconds = 1; // Variable for one millisecond.
-const int defaultStandbyTimer = 1;// Minutes until device turns to standby mode after the hourglass time has passed.
+const int defaultStandbyTimer = 5;// Minutes until device turns to standby mode after the hourglass time has passed.
 int standbyTimer = defaultStandbyTimer;
 int hourglassTimer = hourglassTimerDefaultValue; // This is the actual Varable that will be used to set the hourglass timer. Can be changed via button.
 int hourglassTimerSeconds = hourglassTimer * 60; // The time of the hourglass in seconds.
@@ -100,25 +100,22 @@ const int emptyValue = -1;
 
 
 //Variables for buttons
-volatile bool button1Pressed = false;
-volatile bool button2Pressed = false;
-volatile bool button1Released = false;
-volatile bool button2Released = false;
-volatile bool lastButton1State = HIGH;
-volatile bool lastButton2State = HIGH;
-unsigned long lastDebounceTime = 0;
-const unsigned int debounceDelay = 150;
+int button1State = 0;
+int button2State = 0;
+int lastButton1State = HIGH;
+int lastButton2State = HIGH;
+unsigned long lastDebounceTime1 = 0;
+unsigned long lastDebounceTime2 = 0;
+const unsigned long debounceDelay = 150;
 
 void setup() 
 {
   Serial.begin(9600);  // Initialize serial interface
   mx.begin();
-  mx.control(MD_MAX72XX::INTENSITY, 1); // Brightness
+  mx.control(MD_MAX72XX::INTENSITY, 5); // Brightness
   mx.clear();
   pinMode(BTN1_PIN, INPUT_PULLUP);
   pinMode(BTN2_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(BTN1_PIN), onButton1Change, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(BTN2_PIN), onButton2Change, CHANGE);
 
   for(int i = 0; i < maxSand; i++)
   {
@@ -130,49 +127,6 @@ void setup()
   activateSandLed(sand[nextSand]);
   setInitialHourglass();
   setInitialNumbers(hourglassTimer);
-}
-
-// Interrupt-Service-Routine (ISR)
-void onButton1Change() {
-  unsigned long debounceTime = millis();
-  
-  if (debounceTime - lastDebounceTime > debounceDelay)
-  {
-    lastDebounceTime = debounceTime;
-
-    bool currentButton1State = digitalRead(BTN1_PIN);
-
-    if(currentButton1State == LOW && lastButton1State == HIGH)
-    {
-      button1Pressed = true;
-    }
-    if (currentButton1State == HIGH && lastButton1State == LOW) {
-      button1Released = true;
-    }
-    
-    lastButton1State = currentButton1State;
-  }
-}
-
-void onButton2Change() {
-  unsigned long debounceTime = millis();
-  
-  if (debounceTime - lastDebounceTime > debounceDelay)
-  {
-    lastDebounceTime = debounceTime;
-
-    bool currentButton2State = digitalRead(BTN2_PIN);
-
-    if(currentButton2State == LOW && lastButton2State == HIGH)
-    {
-      button2Pressed = true;
-    }
-    if (currentButton2State == HIGH && lastButton2State == LOW) {
-      button2Released = true;
-    }
-    
-    lastButton2State = currentButton2State;
-  }
 }
 
 //InitializeHourglass
@@ -501,6 +455,9 @@ void turnOffDevice()
 void loop() 
 {
   unsigned long currentTimestamp = millis();
+  
+  int reading1 = digitalRead(BTN1_PIN);
+  int reading2 = digitalRead(BTN2_PIN);
 
   if(currentTimestamp - millisTimer >= milliseconds)
   {
@@ -584,57 +541,72 @@ void loop()
     }
   }
 
-  if (button1Pressed) {
-    Serial.println("Button 1 gedrückt!");
-    mx.clear();
-    turnOnDevice();
-
-    if(isTimeChangeActive)
-    {
-      initializeHourglass(hourglassChangedTime);
-    }
-    else
-    {
-      initializeHourglass(hourglassTimerDefaultValue);
-    }
-
-    isTimeChangeActive = false;
-    button1Pressed = false;
+  if(reading1 != lastButton1State)
+  {
+    lastDebounceTime1 = currentTimestamp;
   }
 
-  if (button1Released) {
-    Serial.println("Button 1 losgelassen!");
-    button1Released = false;
-  }
-
-  if (button2Pressed) {
-    Serial.println("Button 2 gedrückt!");
-    
-    timeChangeDuration = 8;
-    standbyTimer = defaultStandbyTimer;
-    turnOnDevice();
-
-    if(!isTimeChangeActive)
+  if(currentTimestamp - lastDebounceTime1 > debounceDelay)
+  {
+    if(reading1 != button1State)
     {
-      isTimeChangeActive = true;
-    }
-    else
-    {
-      if(hourglassChangedTime < 20)
+      button1State = reading1;
+      if(button1State == LOW)
       {
-        hourglassChangedTime++;
-      }
-      else
-      {
-        hourglassChangedTime = 5;
+        mx.clear();
+        turnOnDevice();
+
+        if(isTimeChangeActive)
+        {
+          initializeHourglass(hourglassChangedTime);
+          hourglassChangedTime = 15;
+        }
+        else
+        {
+          initializeHourglass(hourglassTimerDefaultValue);
+          hourglassChangedTime = 15;
+        }
+
+        isTimeChangeActive = false;
       }
     }
-
-    button2Pressed = false;
   }
 
-  if (button2Released) {
-    Serial.println("Button 2 losgelassen!");
-    button2Released = false;
+  if(reading2 != lastButton2State)
+  {
+    lastDebounceTime2 = currentTimestamp;
   }
+
+  if(currentTimestamp - lastDebounceTime2 > debounceDelay)
+  {
+    if(reading2 != button2State)
+    {
+      button2State = reading2;
+      if(button2State == LOW)
+      {
+        timeChangeDuration = 8;
+        standbyTimer = defaultStandbyTimer;
+        turnOnDevice();
+
+        if(!isTimeChangeActive)
+        {
+          isTimeChangeActive = true;
+        }
+        else
+        {
+          if(hourglassChangedTime < 20)
+          {
+            hourglassChangedTime++;
+          }
+          else
+          {
+            hourglassChangedTime = 5;
+          }
+        }
+      }
+    }
+  }
+
+  lastButton1State = reading1;
+  lastButton2State = reading2;
 }
